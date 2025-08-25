@@ -1,36 +1,37 @@
-import os
+from flask import Flask, request
 import requests
-from fastapi import FastAPI, Request
+import os
 
-app = FastAPI()
+app = Flask(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-ALERT_SECRET = os.getenv("ALERT_SECRET")
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # токен бота из переменных окружения
+# CHAT_ID можно не указывать, т.к. берём chat_id из апдейта
 
-TELEGRAM_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-
-@app.get("/")
+@app.route('/')
 def home():
-    return {"status": "ok", "message": "Bot is running!"}
+    return "✅ Bot is running on Render!"
 
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    data = request.get_json()
+    print("📩 Update from Telegram:", data, flush=True)  # выводим апдейты в логи Render
 
-@app.post("/webhook")
-async def webhook(request: Request):
-    try:
-        data = await request.json()
+    if "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "")
 
-        # если TradingView шлёт секрет
-        secret = data.get("secret")
-        if ALERT_SECRET and secret != ALERT_SECRET:
-            return {"ok": False, "error": "Invalid secret"}
+        # --- Логика автоответа ---
+        if text.lower() in ["привет", "hi", "hello"]:
+            reply = "👋 Привет! Я твой сигнальный бот."
+        else:
+            reply = f"Ты написал: {text}"
 
-        # сообщение в телегу
-        text = f"🚀 Новый сигнал от TradingView:\n{data}"
-        payload = {"chat_id": CHAT_ID, "text": text}
-        requests.post(TELEGRAM_URL, data=payload)
+        # Отправляем ответ в Telegram
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        payload = {"chat_id": chat_id, "text": reply}
+        requests.post(url, json=payload)
 
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    return "ok", 200
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
