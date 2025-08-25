@@ -1,34 +1,36 @@
-# server.-import os, json, requests
-from fastapi import FastAPI, Request, HTTPException
+import os
+import requests
+from fastapi import FastAPI, Request
 
 app = FastAPI()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID", "")
-ALERT_SECRET   = os.getenv("ALERT_SECRET", "CHANGE_ME")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+ALERT_SECRET = os.getenv("ALERT_SECRET")
 
-def send_telegram(text: str):
-    if not TELEGRAM_TOKEN or not CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{7960236842:AAHh8VL9Q9cUVa_H1rlDqWHRtoDE2iCsC2Q}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": text})
+TELEGRAM_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-@app.post("/webhook/{secret}")
-async def webhook(secret: str, request: Request):
-    if secret != ALERT_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid secret")
-    raw = await request.body()
-    text = raw.decode("utf-8", errors="ignore").strip()
-    # Попробуем распарсить JSON; если нет — отправим как есть
-    try:
-        payload = await request.json()
-        text = f"🔔 TV Alert\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
-    except Exception:
-        # text уже содержит тело как строку
-        text = f"🔔 TV Alert (text)\n{text}"
-    send_telegram(text)
-    return {"ok": True}
 
 @app.get("/")
-def health():
-    return {"status": "ok"}
+def home():
+    return {"status": "ok", "message": "Bot is running!"}
+
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    try:
+        data = await request.json()
+
+        # если TradingView шлёт секрет
+        secret = data.get("secret")
+        if ALERT_SECRET and secret != ALERT_SECRET:
+            return {"ok": False, "error": "Invalid secret"}
+
+        # сообщение в телегу
+        text = f"🚀 Новый сигнал от TradingView:\n{data}"
+        payload = {"chat_id": CHAT_ID, "text": text}
+        requests.post(TELEGRAM_URL, data=payload)
+
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
